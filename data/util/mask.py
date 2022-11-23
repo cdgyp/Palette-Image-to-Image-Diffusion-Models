@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import math
 
-import cv2
+# import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 

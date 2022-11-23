@@ -1,7 +1,7 @@
 import torch
 import tqdm
-from core.base_model import BaseModel
-from core.logger import LogTracker
+from ..core.base_model import BaseModel
+from ..core.logger import LogTracker
 import copy
 class EMA():
     def __init__(self, beta=0.9999):
@@ -160,6 +160,23 @@ class Palette(BaseModel):
                 self.writer.save_images(self.save_current_results())
 
         return self.val_metrics.result()
+    def forward(self, y_with_mask):
+        """forward
+
+        :param torch.Tensor y_with_mask: BatchSize x (ClassNumber + 1) x H x W. 通道中多出的一维对应 mask, mask[y, x]=1 表示当前位置是预测的
+        :raises NotImplemented: 没有实现的场景
+        """
+        mask, y = y_with_mask[:, -1], y_with_mask[:, :-1]
+        y = (1. - mask) * y + mask * torch.randn_like(y)
+        
+        if self.opt['distributed']:
+            raise NotImplemented()
+        else:
+            if self.task in ['uncropping']:
+                output, visuals = self.netG.restoration(y, y_t=y, y_0=y, mask=mask, sample_num=self.sample_num)
+            else:
+                raise NotImplemented()
+        return output
 
     def test(self):
         self.netG.eval()

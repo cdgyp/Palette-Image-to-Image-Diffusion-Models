@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 
-import core.util as Util
+from . import util as Util
 CustomResult = collections.namedtuple('CustomResult', 'name result')
 
 class BaseModel():
