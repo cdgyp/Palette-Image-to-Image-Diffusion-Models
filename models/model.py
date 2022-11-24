@@ -157,16 +157,21 @@ class Palette(BaseModel):
                     self.writer.add_scalar(key, value)
                 for key, value in self.get_current_visuals(phase='val').items():
                     self.writer.add_images(key, value)
-                self.writer.save_images(self.save_current_results())
+                # self.writer.save_images(self.save_current_results())
 
         return self.val_metrics.result()
-    def forward(self, y_with_mask):
+    def __call__(self, y_with_mask):
         """forward
 
         :param torch.Tensor y_with_mask: BatchSize x (ClassNumber + 1) x H x W. 通道中多出的一维对应 mask, mask[y, x]=1 表示当前位置是预测的
         :raises NotImplemented: 没有实现的场景
+
+        这将自动切换到 evaluation mode
         """
+
+        self.netG.eval()
         mask, y = y_with_mask[:, -1], y_with_mask[:, :-1]
+        mask = mask.unsqueeze(dim=1)
         y = (1. - mask) * y + mask * torch.randn_like(y)
         
         if self.opt['distributed']:
