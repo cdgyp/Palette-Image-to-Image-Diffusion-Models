@@ -7,6 +7,8 @@ from functools import partial
 import importlib
 from types  import FunctionType
 import shutil
+from ..data.dataset import UncroppingDataset
+
 def init_obj(opt, logger, *args, default_file_name='default file', given_module=None, init_type='Network', **modify_kwargs):
     """
     finds a function handle with the name given as 'name' in config,
@@ -31,8 +33,9 @@ def init_obj(opt, logger, *args, default_file_name='default file', given_module=
         if given_module is not None:
             module = given_module
         else:
-            module = importlib.import_module(file_name)
-        
+            if file_name[0] == '.':
+                file_name = '.' + file_name
+            module = importlib.import_module(file_name, __name__)
         attr = getattr(module, class_name)
         kwargs = opt.get('args', {})
         kwargs.update(modify_kwargs)

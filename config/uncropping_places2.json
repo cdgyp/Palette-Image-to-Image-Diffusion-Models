@@ -5,7 +5,7 @@
     "finetune_norm": false, // find the parameters to optimize
 
     "path": { //set every part file path
-        "base_dir": "experiments", // base path for all log except resume_state
+        "base_dir": "palette_experiments", // base path for all log except resume_state
         "code": "code", // code backup
         "tb_logger": "tb_logger", // path of tensorboard logger
         "results": "results",
@@ -17,13 +17,14 @@
     "datasets": { // train or test
         "train": { 
             "which_dataset": {  // import designated dataset using arguments 
-                "name": ["data.dataset", "UncroppingDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
+                "name": ["..data.dataset", "MaskShiftingUncroppingDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
                 "args":{ // arguments to initialize dataset
-                    "data_root": "datasets/place365/flist/train.flist",
-                    "data_len": -1,
+                    "data_root": "data/semantic_maps",
                     "mask_config": {
-                        "mask_mode": "hybrid" // onedirection | fourdirection | hybrid | manual
-                    }
+                        "mask_mode": "shifting" // onedirection | fourdirection | hybrid | manual
+                    },
+                    "ground_truth_len": -1,
+                    "mask_queue_len": -1
                 } 
             },
             "dataloader":{
@@ -46,9 +47,9 @@
         },
         "test": { 
             "which_dataset": {
-                "name": "UncroppingDataset", // import Dataset() class / function(not recommend) from default file
+                "name": "MaskShiftingUncroppingDataset", // import Dataset() class / function(not recommend) from default file
                 "args":{
-                    "data_root": "datasets/place365/flist/test.flist",
+                    "data_root": "..../data/semantic_maps",
                     "mask_config": {
                         "mask_mode": "onedirection",
                         "shape": []
@@ -67,7 +68,7 @@
 
     "model": { // networks/metrics/losses/optimizers/lr_schedulers is a list and model is a dict
         "which_model": { // import designated  model(trainer) using arguments 
-            "name": ["models.model", "Palette"], // import Model() class / function(not recommend) from models.model.py (default is [models.model.py])
+            "name": ["models.perception.prediction.palette.models.model", "Palette"], // import Model() class / function(not recommend) from models.model.py (default is [models.model.py])
             "args": {
                 "sample_num": 8, // process of each image
                 "task": "uncropping",
@@ -83,12 +84,12 @@
         }, 
         "which_networks": [ // import designated list of networks using arguments
             {
-                "name": ["models.network", "Network"], // import Network() class / function(not recommend) from default file (default is [models/network.py]) 
+                "name": ["models.perception.prediction.palette.models.network", "Network"], // import Network() class / function(not recommend) from default file (default is [models/network.py]) 
                 "args": { // arguments to initialize network
                     "init_type": "kaiming", // method can be [normal | xavier| xavier_uniform | kaiming | orthogonal], default is kaiming
                     "module_name": "guided_diffusion", // sr3 | guided_diffusion
                     "unet": {
-                        "in_channel": 6,
+                        "in_channel": 3,
                         "out_channel": 3,
                         "inner_channel": 64,
                         "channel_mults": [
@@ -110,14 +111,14 @@
                     "beta_schedule": {
                         "train": {
                             "schedule": "linear",
-                            "n_timestep": 2000,
+                            "n_timestep": 100,
                             // "n_timestep": 5, // debug
                             "linear_start": 1e-6,
                             "linear_end": 0.01
                         },
                         "test": {
                             "schedule": "linear",
-                            "n_timestep": 1000,
+                            "n_timestep": 50,
                             "linear_start": 1e-4,
                             "linear_end": 0.09
                         }
