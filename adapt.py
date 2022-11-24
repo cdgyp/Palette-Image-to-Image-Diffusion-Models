@@ -49,12 +49,14 @@ def _main_worker(gpu, ngpus_per_node, opt):
 
 
 
-def prepare(class_number: int, base_config: str, batch_size: int, gpu_ids:list, phase='train', debug=True):
+def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_train: int, iter_per_train: int, gpu_ids:list, phase='train', debug=False):
     """准备 Palette 模型和数据集
 
     :param int class_number: 物品种类数
     :param str base_config: 基础配置，见 palette/config 下
     :param int batch_size: Batch 大小
+    :param int epoch_per_train: 每次调用 train() 时运行的 epoch 数量
+    :param int iter_per_train: 每次调用 train() 时运行的迭代次数
     :param list[int | str] gpu_ids: 可用的 GPU 列表
     :param str phase: 'train' 或 'test', defaults to 'train'
     :param bool debug: bool, defaults to True
@@ -74,19 +76,26 @@ def prepare(class_number: int, base_config: str, batch_size: int, gpu_ids:list, 
     """
     assert class_number > 0
 
-    args = {
+    args_dict = {
         'config': base_config,
         'phase': phase,
         'batch': batch_size,
-        'gpu_ids': gpu_ids,
+        'gpu_ids': ','.join([str(id) for id in gpu_ids]),
         'debug': debug,
         'port': 114514
     }
 
-    opt = Praser.parse(args)
+    class Args:
+        def __init__(self, args_dict: dict) -> None:
+            for k, v in args_dict.items():
+                setattr(self, k, v)
 
-    opt['model']['which_networks']['args']['unet']['in_channel'] = class_number
-    opt['model']['which_networks']['args']['unet']['inner_channel'] = max(class_number * 5, 64)
+    opt = Praser.parse(Args(args_dict))
+
+    opt['model']['which_networks'][0]['args']['unet']['in_channel'] = class_number * 2
+    opt['model']['which_networks'][0]['args']['unet']['inner_channel'] = max(class_number * 2 * 5, 64)
+    opt['train']['n_epoch'] = epoch_per_train
+    opt['train']['n_iter'] = iter_per_train
 
 
     gpu_str = ','.join(str(x) for x in gpu_ids)
