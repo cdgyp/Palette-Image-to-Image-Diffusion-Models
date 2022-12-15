@@ -24,7 +24,7 @@ def _main_worker(gpu, ngpus_per_node, opt):
     phase_logger.info('Create the log file in directory {}.\n'.format(opt['path']['experiments_root']))
 
     '''set networks and dataset'''
-    phase_loader, val_loader = define_dataloader(phase_logger, opt) # val_loader is None if phase is test.
+    phase_loader, val_loader, total_dataset = define_dataloader(phase_logger, opt) # val_loader is None if phase is test.
     networks = [define_network(phase_logger, opt, item_opt) for item_opt in opt['model']['which_networks']]
 
     ''' set metrics, loss, optimizer and  schedulers '''
@@ -45,7 +45,8 @@ def _main_worker(gpu, ngpus_per_node, opt):
     model: Palette
     phase_dataset: MaskShiftingUncroppingDataset = phase_loader.dataset
     val_dataset: MaskShiftingUncroppingDataset = val_loader.dataset
-    return model, phase_dataset, val_dataset
+    total_dataset: MaskShiftingUncroppingDataset
+    return model, total_dataset
 
 
 

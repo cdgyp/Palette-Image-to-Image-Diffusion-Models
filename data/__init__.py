@@ -15,7 +15,7 @@ def define_dataloader(logger, opt):
     dataloader_args = opt['datasets'][opt['phase']]['dataloader']['args']
     worker_init_fn = partial(Util.set_seed, gl_seed=opt['seed'])
 
-    phase_dataset, val_dataset = define_dataset(logger, opt)
+    phase_dataset, val_dataset, total_dataset = define_dataset(logger, opt)
 
     '''create datasampler'''
     data_sampler = None
@@ -31,7 +31,7 @@ def define_dataloader(logger, opt):
         val_dataloader = DataLoader(val_dataset, worker_init_fn=worker_init_fn, **dataloader_args) 
     else:
         val_dataloader = None
-    return dataloader, val_dataloader
+    return dataloader, val_dataloader, total_dataset
 
 
 def define_dataset(logger, opt):
@@ -53,6 +53,7 @@ def define_dataset(logger, opt):
     valid_split = dataloder_opt.get('validation_split', 0)    
     
     ''' divide validation dataset, valid_split==0 when phase is test or validation_split is 0. '''
+    total_dataset = phase_dataset
     if valid_split > 0.0 or 'debug' in opt['name']: 
         if isinstance(valid_split, int):
             assert valid_split < data_len, "Validation set size is configured to be larger than entire dataset."
@@ -65,7 +66,7 @@ def define_dataset(logger, opt):
     logger.info('Dataset for {} have {} samples.'.format(opt['phase'], data_len))
     if opt['phase'] == 'train':
         logger.info('Dataset for {} have {} samples.'.format('val', valid_len))   
-    return phase_dataset, val_dataset
+    return phase_dataset, val_dataset, total_dataset
 
 def subset_split(dataset, lengths, generator):
     """
