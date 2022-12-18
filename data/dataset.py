@@ -22,7 +22,7 @@ def make_dataset(dir, file_filter=lambda x: False):
         images = [i for i in np.genfromtxt(dir, dtype=np.str, encoding='utf-8')]
     else:
         images = []
-        assert os.path.isdir(dir), '%s is not a valid directory' % dir
+        assert os.path.isdir(dir) or os.path.islink(dir), '%s is not a valid directory' % dir
         for root, _, fnames in sorted(os.walk(dir)):
             for fname in sorted(fnames):
                 if is_image_file(fname) or file_filter(fname):
@@ -56,12 +56,12 @@ class InpaintDataset(data.Dataset):
         path = self.imgs[index]
         img = self.tfs(self.loader(path))
         mask = self.get_mask()
-        cond_image = img*(1. - mask) + mask*torch.randn_like(img)
-        mask_img = img*(1. - mask) + mask
+        # cond_image = img*(1. - mask) + mask*torch.randn_like(img)
+        # mask_img = img*(1. - mask) + mask
 
         ret['gt_image'] = img
-        ret['cond_image'] = cond_image
-        ret['mask_image'] = mask_img
+        # ret['cond_image'] = cond_image
+        # ret['mask_image'] = mask_img
         ret['mask'] = mask
         ret['path'] = path.rsplit("/")[-1].rsplit("\\")[-1]
         return ret
@@ -116,15 +116,19 @@ class UncroppingDataset(data.Dataset):
         path = self.imgs[index]
         img = self.tfs(self.loader(path))
         mask = self.get_mask(index)
-        cond_image = img*(1. - mask) + mask*torch.randn_like(img)
-        mask_img = img*(1. - mask) + mask
+        # cond_image = img * (1. - mask) + mask * torch.randn_like(img).to(mask.device)
+        # mask_img = img*(1. - mask) + mask
 
         ret['gt_image'] = img
-        ret['cond_image'] = cond_image
-        ret['mask_image'] = mask_img
+        # ret['cond_image'] = cond_image
+        # ret['mask_image'] = mask_img
         ret['mask'] = mask
         ret['path'] = path.rsplit("/")[-1].rsplit("\\")[-1]
+        ret['channel'] = img.shape[-3]
         return ret
+    
+    def get_collate_fn(self):
+        return None
 
     def __len__(self):
         return len(self.imgs)
@@ -148,15 +152,70 @@ class UncroppingDataset(data.Dataset):
 
 
 class MaskShiftingUncroppingDataset(UncroppingDataset):
-    def __init__(self, data_root, mask_config={}, ground_truth_len=-1, mask_queue_len=-1, image_size=[256, 256], mask_compression=lambda x: x, default_mask_mode='fourdirection'):
+    class GsmLoader:
+        def __init__(self, device='cpu'):
+            self.device = device
+        def __call__(self, path):
+            return torch.load(path).to(self.device)
+    class MyRandomCrop:
+        def __init__(self, size) -> None:
+            try:
+                size[0]
+            except:
+                size = [size, size]
+            self.size = size
+            
+        def __call__(self, img: torch.Tensor):
+            import torch.nn.functional as F
+            import random
+
+            padding = [0] * 4
+            for i in [-1, -2]:
+                if img.shape[i] < self.size[i]:
+                    d = self.size[i] - img.shape[i]
+                    low = int(d / 2)
+                    high = d - low
+                    padding[(-i - 1) * 2] = low
+                    padding[(-i - 1) * 2 + 1] = high
+            img = F.pad(img, padding)
+            for i in [-1, -2]:
+                assert img.shape[i] >= self.size[i]
+
+            h, w = self.size
+            i = random.randint(0, img.shape[-2] - h)
+            j = random.randint(0, img.shape[-1] - w)
+
+            if len(img.shape) == 2:
+                return img[i: i + h, j: j + h]
+            else:
+                assert len(img.shape) == 3
+                return img[:, i: i + h, j: j + h]
+
+
+
+    def _identitiy(x): return x
+    def _file_filer(fname): return fname[-4:] == '.gsm'
+    def __init__(self, data_root, class_number, mask_config={}, ground_truth_len=-1, mask_queue_len=-1, image_size=[256, 256], mask_compression=None, default_mask_mode='fourdirection', device='cpu'):
         mask_config['mask_mode'] = 'shifting'
-        super().__init__(os.path.join(data_root, 'groundtruths'), mask_config, ground_truth_len, image_size, loader=torch.load, transforms=lambda x:x, file_filter=lambda fname: fname[-3:]=='.pt')
+        if mask_compression is None:
+            mask_compression = MaskShiftingUncroppingDataset._identitiy
+        super().__init__(
+            os.path.join(data_root, 'groundtruths'), 
+            mask_config, 
+            ground_truth_len, 
+            image_size, 
+            loader=MaskShiftingUncroppingDataset.GsmLoader(device), 
+            file_filter=MaskShiftingUncroppingDataset._file_filer,
+            transforms=MaskShiftingUncroppingDataset.MyRandomCrop(image_size)
+        )
+        self.device = device
         self.ground_truth_root = os.path.join(data_root, 'groundtruths')
         self.mask_root = os.path.join(data_root, 'masks')
 
         # 制备真相
         self.gt_identifiers = []
         self.gt_id_to_index = {}
+        self.max_channel = 0
         self.mask_queue_len = mask_queue_len
         self._make_mask_sets()
 
@@ -174,7 +233,7 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
         gt_id = self.gt_identifiers[index]
         mask_pos = torch.randint(0, len(self.mask_queues[index]), (1, )).item()
         mask_id = self.mask_queues[index][mask_pos]
-        mask = torchvision.io.read_image(os.path.join(self._get_mask_dir(gt_id), str(mask_id) + '.jpg'))
+        mask = torchvision.io.read_image(os.path.join(self._get_mask_dir(gt_id), str(mask_id) + '.jpg')).to(self.device)
         assert len(mask.shape) == 3 and mask.shape[0] == 3
         mask = mask[:1]
         assert len(mask.shape) == 3 and mask.shape[0] == 1
@@ -200,7 +259,8 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
         self.mask_queues.append(
             collections.deque(
                 ['.'.join(img.rsplit("/")[-1].rsplit("\\")[-1].rsplit('.')[:-1]) for img in make_dataset(mask_dir)],
-                 self.mask_queue_len if self.mask_queue_len > 0 else None)
+                 self.mask_queue_len if self.mask_queue_len > 0 else None
+            )
         )
         if len(self.mask_queues[-1]) > 0:
             self.mask_counts.append(int(self.mask_queues[-1][-1]))
@@ -253,13 +313,45 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
                     self.mask_mode = self.default_mask_mode
                     res = super().get_mask(index)
                     self.mask_mode = 'shifting'
-                    return res
+                    return res.to(self.device)
                 return self._get_shifting_mask(index)
             else:
                 raise NotImplementedError(
                     f'Mask mode {self.mask_mode} has not been implemented.')
+    def _pad(data):
+        max_channel = 0
+        for s in data:
+            max_channel = max(max_channel, s['channel'])
+        sample:dict = data[0]
+        batch:dict = {}
+        for key in sample.keys():
+            res = []
+            for s in data:
+                if isinstance(s[key], torch.Tensor) and key != 'mask':
+                    original = s[key]
+                    padded = torch.nn.functional.pad(
+                        original,
+                        pad = [0, 0, 0, 0, 0, max_channel - original.shape[-3]],
+                        mode='constant',
+                        value=0
+                    )
+                    if len(original.shape) == 3:
+                        assert (original != padded[:s['channel']]).sum() == 0, (s['channel'], original.shape, max_channel, padded.shape, (original - padded).abs().sum())
+                    elif len(original.shape) == 4:
+                        assert (original != padded[:, :s['channel']]).sum() == 0
+                    else:
+                        raise NotImplementedError
 
-
+                    res.append(padded)
+                else:
+                    res.append(s[key])    
+            if isinstance(sample[key], torch.Tensor):
+                res = torch.stack(res, dim=0)
+            batch[key] = res
+        return batch
+    
+    def get_collate_fn(self):
+        return MaskShiftingUncroppingDataset._pad
 
 
 class ColorizationDataset(data.Dataset):
