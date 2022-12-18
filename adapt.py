@@ -43,8 +43,6 @@ def _main_worker(gpu, ngpus_per_node, opt):
     )
 
     model: Palette
-    phase_dataset: MaskShiftingUncroppingDataset = phase_loader.dataset
-    val_dataset: MaskShiftingUncroppingDataset = val_loader.dataset
     total_dataset: MaskShiftingUncroppingDataset
     return model, total_dataset
 
@@ -61,7 +59,7 @@ def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_trai
     :param list[int | str] gpu_ids: 可用的 GPU 列表
     :param str phase: 'train' 或 'test', defaults to 'train'
     :param bool debug: bool, defaults to True
-    :return tuple[Palette, MaskShiftingUncroppingDataset, MaskShiftingUncroppingDataset]: Palette 模型、训练数据集、验证数据集
+    :return tuple[Palette, MaskShiftingUncroppingDataset]: Palette 模型、数据集
 
     ### Palette:
 
@@ -94,7 +92,8 @@ def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_trai
     opt = Praser.parse(Args(args_dict))
 
     opt['model']['which_networks'][0]['args']['unet']['in_channel'] = class_number * 2
-    opt['model']['which_networks'][0]['args']['unet']['inner_channel'] = max(class_number * 2 * 5, 64)
+    opt['model']['which_networks'][0]['args']['unet']['out_channel'] = class_number
+    opt['model']['which_networks'][0]['args']['unet']['inner_channel'] = max(class_number * 2, 64)
     opt['train']['n_epoch'] = epoch_per_train
     opt['train']['n_iter'] = iter_per_train
 

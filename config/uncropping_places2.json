@@ -11,7 +11,7 @@
         "results": "results",
         "checkpoint": "checkpoint",
         // "resume_state": "experiments/inpainting_places2_220413_143231/checkpoint/25" 
-        "resume_state": null // ex: 100, loading .state  and .pth from given epoch and iteration
+        "resume_state": 700 // ex: 100, loading .state  and .pth from given epoch and iteration
     },
 
     "datasets": { // train or test
@@ -19,7 +19,8 @@
             "which_dataset": {  // import designated dataset using arguments 
                 "name": ["..data.dataset", "MaskShiftingUncroppingDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
                 "args":{ // arguments to initialize dataset
-                    "data_root": "data/semantic_maps",
+                    "data_root": "data/semantic_maps/train",
+                    "class_number": 40,
                     "mask_config": {
                         "mask_mode": "shifting" // onedirection | fourdirection | hybrid | manual
                     },
@@ -49,7 +50,7 @@
             "which_dataset": {
                 "name": "MaskShiftingUncroppingDataset", // import Dataset() class / function(not recommend) from default file
                 "args":{
-                    "data_root": "..../data/semantic_maps",
+                    "data_root": "..../data/semantic_maps/train",
                     "mask_config": {
                         "mask_mode": "onedirection",
                         "shape": []
@@ -78,7 +79,7 @@
                     "ema_decay": 0.9999
                 },
                 "optimizers": [
-                    { "lr": 5e-5, "weight_decay": 0}
+                    { "lr": 5e-6, "weight_decay": 0}
                 ]
             }
         }, 
@@ -89,14 +90,14 @@
                     "init_type": "kaiming", // method can be [normal | xavier| xavier_uniform | kaiming | orthogonal], default is kaiming
                     "module_name": "guided_diffusion", // sr3 | guided_diffusion
                     "unet": {
-                        "in_channel": 3,
-                        "out_channel": 3,
+                        "in_channel": 48,
+                        "out_channel": 48,
                         "inner_channel": 64,
                         "channel_mults": [
                             1,
                             2,
-                            4,
-                            8
+                            8,
+                            4
                         ],
                         "attn_res": [
                             // 32,
@@ -124,17 +125,25 @@
                         }
                     }
                 }
+            },
+            {
+                "name": ["models.perception.prediction.palette.models.network", "ChannelAdaptor"],
+                "args": {
+                    "in_channels": 1408,
+                    "out_channels": 48,
+                    "path_to_classes_json": "data/semantic_maps/train/groundtruths/classes.json"
+                }
             }
         ],
         "which_optimizers": [ // len(networks) == len(optimizers) == len(lr_schedulers), it will be deleted after initialization if not used.
-            { "name": "Adam", "args":{ "lr": 5e-5, "weight_decay": 0}}
+            { "name": "Adam", "args":{ "lr": 5e-6, "weight_decay": 0}}
         ],
         "which_lr_schedulers": [ // {} represents None, it will be deleted after initialization.
             {}
             // { "name": "LinearLR", "args": { "start_factor": 0.2, "total_iters": 1e3 }}
         ],
         "which_losses": [ // import designated list of losses without arguments
-            "mse_loss" // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
+            "focused_mse_loss" // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
         ],
         "which_metrics": [ // import designated list of metrics without arguments
             "mae" // import mae() function/class from default file (default is [models/metrics.py]), equivalent to { "name": "mae", "args":{}}
@@ -144,8 +153,8 @@
     "train": { // arguments for basic training
         "n_epoch": 1e8, // max epochs, not limited now
         "n_iter": 1e8, // max interations
-        "val_epoch": 1, // valdation every specified number of epochs
-        "save_checkpoint_epoch": 1,
+        "val_epoch": 5, // valdation every specified number of epochs
+        "save_checkpoint_epoch": 200,
         "log_iter": 1e4, // log every specified number of iterations
         "tensorboard" : true // tensorboardX enable
     },
