@@ -1,10 +1,14 @@
 import math
+import os
 import torch
 from inspect import isfunction
 from functools import partial
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from ..core.base_network import BaseNetwork
+
+from ....utils import ClassManager
+
 class Network(BaseNetwork):
     def __init__(self, unet, beta_schedule, module_name='sr3', **kwargs):
         super(Network, self).__init__(**kwargs)
@@ -178,4 +182,79 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-6, linear_end=1e-2,
         raise NotImplementedError(schedule)
     return betas
 
+class ChannelAdaptor(BaseNetwork):
+    """降低通道数以降低计算开销
+    """
+    def __init__(self, in_channels: int, out_channels: int, path_to_classes_json: str, path_to_groundtruths: str=None, **kwargs) -> None:
+        from .....common import goal_categories
+        import json
+        super().__init__(**kwargs)
 
+        self.classes_json = path_to_classes_json
+        assert os.path.isfile(self.classes_json)
+        with open(self.classes_json, 'r') as fp:
+            classes_json = json.load(fp)
+        target_classes = [classes_json['class_id'][c] for c in goal_categories]
+        print(goal_categories, target_classes)
+        if not isinstance(target_classes, torch.Tensor):
+            target_classes = torch.tensor(target_classes)
+        self.target_classes = target_classes.flatten().type(torch.long)
+        assert out_channels > len(self.target_classes)
+        
+        if path_to_groundtruths is None:
+            path_to_groundtruths = os.path.dirname(path_to_classes_json)
+        self.path_to_groundtruths = path_to_groundtruths
+        self.cm: ClassManager = None
+        self.kernel = torch.nn.Parameter(torch.rand((out_channels - len(self.target_classes), in_channels, 1, 1)), requires_grad=True)
+        assert self.kernel.requires_grad
+
+    def set_path(self, paths: list):
+        self.cm = []
+        for path in paths:
+            assert isinstance(path, str)
+            if path[-4:] == '.gsm':
+                path = path[:-4] + '.cm'
+            assert path[-3:] == '.cm', path
+            try:
+                cm = ClassManager.load(path, self.classes_json, device=self.kernel.device)
+            except FileNotFoundError:
+                path = os.path.join(self.path_to_groundtruths, path)
+                cm = ClassManager.load(path, self.classes_json, device=self.kernel.device)
+            self.cm.append(cm)
+    
+    def conv(self, x: torch.Tensor, cm: ClassManager):
+        if cm is None:
+            return torch.nn.functional.conv2d(x.unsqueeze(dim=0), self.kernel).squeeze(dim=0)
+        x = x.to(self.kernel.device)
+        local_kernel = cm.reduce_channel(self.kernel, dim=1)
+        assert local_kernel.requires_grad == True or x.requires_grad == False
+        assert local_kernel.shape[1] == x.shape[0], (x.shape, local_kernel.shape)
+        return torch.nn.functional.conv2d(x.unsqueeze(dim=0), local_kernel).squeeze(dim=0)
+    def select(self, x: torch.Tensor, cm:ClassManager):
+        if cm is None:
+            return x[self.target_classes]
+        indices = cm.reduce(self.target_classes).clamp(min=-1)
+        if (indices < 0).sum() > 0:
+            x = torch.cat([x, torch.zeros_like(x)], dim=0)
+        return x[indices]
+    def forward_sample(self, x: torch.Tensor, channel: int, i: int):
+        assert len(x.shape) == 3, len(x.shape)
+        assert x[channel:].abs().sum() == 0
+        x = x[:channel]
+        cm = self.cm[i] if i is not None else None
+        return torch.cat([self.select(x, cm), self.conv(x, cm)], dim=0)
+
+    def forward(self, xs: torch.Tensor, channels:list=None):
+        """
+        `channel=None` 表示没有经过压缩和 padding
+        """
+        if channels is None:
+            if len(xs.shape) == 4:
+                xs = xs.squeeze(dim=0)
+            res = self.forward_sample(xs, xs.shape[-3], None)
+        else:
+            assert len(xs) == len(channels)
+            res = [self.forward_sample(xs[i], channels[i], i) for i in range(len(channels))]
+            res = torch.stack(res, dim=0)
+        self.cm = None
+        return res
