@@ -16,6 +16,7 @@ def define_dataloader(logger, opt):
     worker_init_fn = partial(Util.set_seed, gl_seed=opt['seed'])
 
     phase_dataset, val_dataset, total_dataset = define_dataset(logger, opt)
+    collate_fn = total_dataset.get_collate_fn()
 
     '''create datasampler'''
     data_sampler = None
@@ -24,11 +25,11 @@ def define_dataloader(logger, opt):
         dataloader_args.update({'shuffle':False}) # sampler option is mutually exclusive with shuffle 
     
     ''' create dataloader and validation dataloader '''
-    dataloader = DataLoader(phase_dataset, sampler=data_sampler, worker_init_fn=worker_init_fn, **dataloader_args)
+    dataloader = DataLoader(phase_dataset, sampler=data_sampler, worker_init_fn=worker_init_fn, collate_fn=collate_fn, **dataloader_args)
     ''' val_dataloader don't use DistributedSampler to run only GPU 0! '''
     if opt['global_rank']==0 and val_dataset is not None:
         dataloader_args.update(opt['datasets'][opt['phase']]['dataloader'].get('val_args',{}))
-        val_dataloader = DataLoader(val_dataset, worker_init_fn=worker_init_fn, **dataloader_args) 
+        val_dataloader = DataLoader(val_dataset, worker_init_fn=worker_init_fn, collate_fn=collate_fn, **dataloader_args) 
     else:
         val_dataloader = None
     return dataloader, val_dataloader, total_dataset
