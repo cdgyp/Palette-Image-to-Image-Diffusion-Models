@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from .....common import goal_categories
 
 # class mse_loss(nn.Module):
 #     def __init__(self) -> None:
@@ -11,7 +12,16 @@ from torch.autograd import Variable
 #         return self.loss_fn(output, target)
 
 
-def mse_loss(output, target):
+def focused_mse_loss(output: torch.Tensor, target: torch.Tensor):
+    len_goal = len(goal_categories)
+    weight_goal = torch.full([len_goal], 0.5 / len_goal)
+    len_non_goal = target.shape[-3] - len_goal
+    weight_non_goal = torch.full([len_non_goal], 0.5 / len_non_goal)
+    weight = torch.cat([weight_goal, weight_non_goal]).to(output.device)
+    assert weight.requires_grad == False and (weight.sum() - 1).abs().item() < 1e-5
+    return (weight * ((output - target)**2).mean(dim=(-1, -2))).sum(dim=-1).mean()
+
+def mse_loss(output: torch.Tensor, target: torch.Tensor):
     return F.mse_loss(output, target)
 
     
