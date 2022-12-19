@@ -63,15 +63,14 @@ class Palette(BaseModel):
     def set_input(self, data):
         self.path = data['path']
         self.batch_size = len(data['path'])
-        self.adaptor.set_path(self.path)
 
         ''' must use set_device in tensor '''
 
-        self.gt_image = self.adaptor(self.set_device(data.get('gt_image')), data['channel'])
+        self.gt_image = self.adaptor(self.set_device(data.get('gt_image'),), data.get('channel'), self.set_device(data.get('class_manager')))
         self.mask = self.set_device(data.get('mask'))
         img, mask = self.gt_image, self.mask
-        self.cond_image = self.set_device(img*(1. - mask) + mask*torch.randn_like(img).to(mask.device))
-        self.mask_image = img*(1. - mask) + mask
+        self.cond_image = self.set_device(img*(1. - mask) + mask * self.set_device(torch.randn_like(img)))
+        self.mask_image = img * (1. - mask) + mask
 
     
     def get_current_visuals(self, phase='train'):
@@ -118,15 +117,6 @@ class Palette(BaseModel):
             self.set_input(train_data)
             loss = self.netG(self.gt_image, self.cond_image, mask=self.mask)
             loss.backward()
-            # with torch.no_grad():
-                # grad = torch.zeros(1)
-                # for p in self.adaptor.parameters():
-                    # grad += p.norm()
-                # print(grad.item())
-                # grad = torch.zeros(1)
-                # for p in self.netG.parameters():
-                    # grad += p.norm()
-                # print(grad.item())
             self.optG.step()
 
             self.iter += self.batch_size

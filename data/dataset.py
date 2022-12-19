@@ -125,6 +125,7 @@ class UncroppingDataset(data.Dataset):
         ret['mask'] = mask
         ret['path'] = path.rsplit("/")[-1].rsplit("\\")[-1]
         ret['channel'] = img.shape[-3]
+        ret = self._fill_item(index, ret)
         return ret
     
     def get_collate_fn(self):
@@ -149,7 +150,8 @@ class UncroppingDataset(data.Dataset):
             raise NotImplementedError(
                 f'Mask mode {self.mask_mode} has not been implemented.')
         return torch.from_numpy(mask).permute(2,0,1)
-
+    def _fill_item(self, index, ret):
+        return ret
 
 class MaskShiftingUncroppingDataset(UncroppingDataset):
     class GsmLoader:
@@ -195,7 +197,7 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
 
     def _identitiy(x): return x
     def _file_filer(fname): return fname[-4:] == '.gsm'
-    def __init__(self, data_root, class_number, mask_config={}, ground_truth_len=-1, mask_queue_len=-1, image_size=[256, 256], mask_compression=None, default_mask_mode='fourdirection', device='cpu'):
+    def __init__(self, data_root, mask_config={}, ground_truth_len=-1, mask_queue_len=-1, image_size=[256, 256], mask_compression=None, default_mask_mode='fourdirection', device='cpu'):
         mask_config['mask_mode'] = 'shifting'
         if mask_compression is None:
             mask_compression = MaskShiftingUncroppingDataset._identitiy
@@ -272,7 +274,7 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
         """为一个真相添加新的 mask
 
         :param str ground_truth_id: 真相的名称，可以在 get_ground_truth_identifiers() 中找到
-        :param torch.Tensor mask: BatchSize x H x W 或 H x W
+        :param torch.Tensor mask: BatchSize x H x W 或 H x W，一个位置的像素为 1 表示这一个位置需要预测
         :raises KeyError: 不合法的真相名称
         """
         if ground_truth_id not in self.gt_id_to_index:
@@ -304,6 +306,19 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
     def _get_masks(self, ground_truth_id):
         assert self.is_ground_truth(ground_truth_id)
         return list(self.mask_queues[self.gt_id_to_index[ground_truth_id]])
+    def _pseudo_trace_mask(self, index):
+        from numpy import random
+        length = int(self.mask_config['sensor_range'] / self.mask_config['scale']) * 2
+        if random.randint(2):
+            step = random.randint(1, self.mask_config['max_small_step'] + 1)
+        else:
+            step = random.randint(1, self.image_size[0] * self.image_size[1] / length**2 + 1)
+        res = torch.ones(self.image_size)
+        for _ in range(step):
+            i = random.randint(0, self.image_size[0] - length)
+            j = random.randint(0, self.image_size[1] - length)
+            res[i:i + length, j:j + length] = 0
+        return res.unsqueeze(dim=0)
     def get_mask(self, index):
         try:
             return super().get_mask(index)
@@ -311,7 +326,7 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
             if self.mask_mode == 'shifting':
                 if len(self.mask_queues[index]) <= 0:
                     self.mask_mode = self.default_mask_mode
-                    res = super().get_mask(index)
+                    res = self._pseudo_trace_mask(index)
                     self.mask_mode = 'shifting'
                     return res.to(self.device)
                 return self._get_shifting_mask(index)
@@ -352,6 +367,22 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
     
     def get_collate_fn(self):
         return MaskShiftingUncroppingDataset._pad
+    def _fill_item(self, index, data: dict):
+        from ....utils import ClassManager
+        cm = None
+        path = data['path']
+        assert isinstance(path, str)
+        if path[-4:] == '.gsm':
+            path = path[:-4] + '.cm'
+        assert path[-3:] == '.cm', path
+        path_to_classes_json = os.path.join(self.ground_truth_root, 'classes.json')
+        try:
+            cm = ClassManager.load(path, path_to_classes_json, device=self.device)
+        except FileNotFoundError:
+            path = os.path.join(self.ground_truth_root, path)
+            cm = ClassManager.load(path, path_to_classes_json, device=self.device)
+        data['class_manager'] = cm
+        return data
 
 
 class ColorizationDataset(data.Dataset):
