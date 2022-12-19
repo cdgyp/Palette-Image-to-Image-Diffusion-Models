@@ -14,10 +14,10 @@ from .....common import goal_categories
 
 def focused_mse_loss(output: torch.Tensor, target: torch.Tensor):
     len_goal = len(goal_categories)
-    weight_goal = torch.full([len_goal], 0.5 / len_goal)
+    weight_goal = torch.full([len_goal], 0.5 / len_goal).to(output.device)
     len_non_goal = target.shape[-3] - len_goal
-    weight_non_goal = torch.full([len_non_goal], 0.5 / len_non_goal)
-    weight = torch.cat([weight_goal, weight_non_goal]).to(output.device)
+    weight_non_goal = torch.full([len_non_goal], 0.5 / len_non_goal).to(output.device)
+    weight = torch.cat([weight_goal, weight_non_goal])
     assert weight.requires_grad == False and (weight.sum() - 1).abs().item() < 1e-5
     return (weight * ((output - target)**2).mean(dim=(-1, -2))).sum(dim=-1).mean()
 
