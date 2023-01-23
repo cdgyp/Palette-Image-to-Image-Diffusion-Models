@@ -66,7 +66,9 @@ class Palette(BaseModel):
 
         ''' must use set_device in tensor '''
 
+        self.adaptor.clear_loss()
         self.gt_image = self.adaptor(self.set_device(data.get('gt_image'),), data.get('channel'), self.set_device(data.get('class_manager')))
+        self.adaptor_loss = self.adaptor.get_loss().mean()
         self.mask = self.set_device(data.get('mask'))
         img, mask = self.gt_image, self.mask
         self.cond_image = self.set_device(img*(1. - mask) + mask * self.set_device(torch.randn_like(img)))
@@ -115,7 +117,7 @@ class Palette(BaseModel):
         for train_data in tqdm.tqdm(self.phase_loader):
             self.optG.zero_grad()
             self.set_input(train_data)
-            loss = self.netG(self.gt_image, self.cond_image, mask=self.mask)
+            loss = self.netG(self.gt_image, self.cond_image, mask=self.mask) + self.adaptor_loss
             loss.backward()
             self.optG.step()
 
@@ -130,7 +132,7 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [fold_channel(v, 3, reduction='mean') for v in value]
+                            value = [fold_channel(v, 3, reduction='mean', red_goal=True) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
             if self.ema_scheduler is not None:
@@ -174,7 +176,7 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [fold_channel(v, 3, reduction='mean') for v in value]
+                            value = [fold_channel(v, 3, reduction='mean', red_goal=True) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 # self.writer.save_images(self.save_current_results())
@@ -235,7 +237,7 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [fold_channel(v, 3, reduction='mean') for v in value]
+                            value = [fold_channel(v, 3, reduction='mean', red_goal=True) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 self.writer.save_images(self.save_current_results())

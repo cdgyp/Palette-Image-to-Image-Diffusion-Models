@@ -185,7 +185,7 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-6, linear_end=1e-2,
 class ChannelAdaptor(BaseNetwork):
     """降低通道数以降低计算开销
     """
-    def __init__(self, in_channels: int, out_channels: int, path_to_classes_json: str, path_to_groundtruths: str=None, **kwargs) -> None:
+    def __init__(self, in_channels: int, out_channels: int, path_to_classes_json: str, path_to_groundtruths: str=None, weight=1e-4, **kwargs) -> None:
         from .....common import goal_categories
         import json
         super().__init__(**kwargs)
@@ -207,14 +207,25 @@ class ChannelAdaptor(BaseNetwork):
         self.kernel = torch.nn.Parameter(torch.rand((out_channels - len(self.target_classes), in_channels, 1, 1)), requires_grad=True)
         assert self.kernel.requires_grad
 
+        self.loss:torch.Tensor = 0
+        self.weight = weight
+    def clear_loss(self):
+        self.loss = 0
+    def get_loss(self):
+        return self.loss
+    def _loss(self, x: torch.Tensor):
+        self.loss = self.weight * x.std(dim=(-1, -2)).mean(dim=-1)
+
     def conv(self, x: torch.Tensor, cm: ClassManager):
         if cm is None:
             return torch.nn.functional.conv2d(x.unsqueeze(dim=0), self.kernel).squeeze(dim=0)
         x = x.to(self.kernel.device)
-        local_kernel = cm.reduce_channel(self.kernel, dim=1)
+        local_kernel = cm.reduce_channel(self.kernel.exp(), dim=1)
         assert local_kernel.requires_grad == True or x.requires_grad == False
         assert local_kernel.shape[1] == x.shape[0], (x.shape, local_kernel.shape)
-        return torch.nn.functional.conv2d(x.unsqueeze(dim=0), local_kernel).squeeze(dim=0)
+        res = torch.nn.functional.conv2d(x.unsqueeze(dim=0), local_kernel).squeeze(dim=0)
+        self._loss(res)
+        return res
     def select(self, x: torch.Tensor, cm:ClassManager):
         if cm is None:
             return x[self.target_classes]
