@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import collections
 import torchvision
-
+import torch.nn.functional as F
 from .util.mask import (bbox2mask, brush_stroke_mask, get_irregular_mask, random_bbox, random_cropping_bbox)
 
 IMG_EXTENSIONS = [
@@ -194,10 +194,66 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
                 return img[:, i: i + h, j: j + h]
 
 
+    class MyRandomRotation:
+        def __init__(self, device='cpu') -> None:
+            self.device = device
+        def _rotz(self, theta):
+            return np.array([
+                [np.cos(theta), -np.sin(theta), 0],
+                [np.sin(theta), np.cos(theta), 0],
+                [0, 0, 1],
+            ], dtype="float64")
+        def _output_size(self, shape, angle):
+            assert len(shape) == 4 and shape[0] == 1
+            points = torch.tensor([
+                [0, 0],
+                [shape[-2], 0],
+                [0, shape[-1]],
+                [shape[-2], shape[-1]]
+            ]).transpose(0, 1).type(torch.double)
+            rotm = torch.from_numpy(self._rotz(angle))[:2, :2]
+            rotated = torch.matmul(rotm, points).transpose(0, 1)
+            extremes = [
+                int(rotated[:, -2].max() - rotated[:, -2].min()),
+                int(rotated[:, -1].max() - rotated[:, -1].min())
+            ]
+            return torch.Size(list(shape)[:2] + extremes)
+        def _rotate(self, x: torch.Tensor, degree):
+            """
+            修改自：https://gist.github.com/kevinzakka/0b807675453c7d8cf94bb477834f01fe
+            """
+            assert len(x.shape) == 4
 
+            device = self.device
+            angle = np.deg2rad(degree)
+            rotm = self._rotz(angle)[:2, :].reshape(2, 3, 1)
+            rotm = torch.FloatTensor(rotm).permute(2, 0, 1).repeat(x.shape[0], 1, 1)
+            affine_grid = F.affine_grid(
+                rotm, 
+                self._output_size(x.shape, angle), 
+                align_corners=False
+            ).to(device)
+            with torch.no_grad():
+                x_r = F.grid_sample(x, affine_grid, align_corners=False, padding_mode='zeros')
+            return x_r
+        def __call__(self, img: torch.Tensor):
+            degree = np.random.randint(0, 360)
+            return self._rotate(img.unsqueeze(dim=0), degree).squeeze(dim=0)
+    class MyDownScale:
+        def __init__(self, down_scale=1) -> None:
+            self.down_scale = down_scale
+        def __call__(self, img: torch.Tensor):
+            shape = list(img.shape)
+            img = img[..., :shape[-2] // self.down_scale * self.down_scale, :shape[-1] // self.down_scale * self.down_scale]
+            new_shape = shape[:-2] + [shape[-2] // self.down_scale, self.down_scale, shape[-1] // self.down_scale, self.down_scale]
+            res = img.reshape(new_shape).mean(dim=(-1, -3))
+            assert len(res.shape) == len(shape)
+            return res
+        
     def _identitiy(x): return x
     def _file_filer(fname): return fname[-4:] == '.gsm'
-    def __init__(self, data_root, mask_config={}, ground_truth_len=-1, mask_queue_len=-1, image_size=[256, 256], mask_compression=None, default_mask_mode='fourdirection', device='cpu'):
+
+    def __init__(self, data_root, mask_config={}, ground_truth_len=-1, mask_queue_len=-1, image_size=[256, 256], mask_compression=None, down_scale=1, default_mask_mode='fourdirection', device='cpu'):
         mask_config['mask_mode'] = 'shifting'
         if mask_compression is None:
             mask_compression = MaskShiftingUncroppingDataset._identitiy
@@ -208,11 +264,16 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
             image_size, 
             loader=MaskShiftingUncroppingDataset.GsmLoader(device), 
             file_filter=MaskShiftingUncroppingDataset._file_filer,
-            transforms=MaskShiftingUncroppingDataset.MyRandomCrop(image_size)
+            transforms=transforms.Compose([
+                MaskShiftingUncroppingDataset.MyDownScale(down_scale),
+                MaskShiftingUncroppingDataset.MyRandomRotation(device),
+                MaskShiftingUncroppingDataset.MyRandomCrop(image_size),
+            ])
         )
         self.device = device
         self.ground_truth_root = os.path.join(data_root, 'groundtruths')
         self.mask_root = os.path.join(data_root, 'masks')
+        self.down_scale = down_scale
 
         # 制备真相
         self.gt_identifiers = []
