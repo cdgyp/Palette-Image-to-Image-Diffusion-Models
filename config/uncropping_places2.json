@@ -27,6 +27,7 @@
                         "scale": 0.2,
                         "max_small_step": 3
                     },
+                    "down_scale": 2,
                     "ground_truth_len": -1,
                     "mask_queue_len": -1
                 } 
@@ -60,7 +61,8 @@
                         "sensor_range": 5.0,
                         "scale": 0.2,
                         "max_small_step": 3
-                    }
+                    },
+                    "down_scale": 2
                 }
             },
             "dataloader":{
@@ -96,8 +98,8 @@
                     "init_type": "kaiming", // method can be [normal | xavier| xavier_uniform | kaiming | orthogonal], default is kaiming
                     "module_name": "guided_diffusion", // sr3 | guided_diffusion
                     "unet": {
-                        "in_channel": 4,
-                        "out_channel": 4,
+                        "in_channel": 10,
+                        "out_channel": 10,
                         "inner_channel": 64,
                         "channel_mults": [
                             1,
@@ -136,8 +138,9 @@
                 "name": ["models.perception.prediction.palette.models.network", "ChannelAdaptor"],
                 "args": {
                     "in_channels": 1408,
-                    "out_channels": 4,
-                    "path_to_classes_json": "data/semantic_maps/train/groundtruths/classes.json"
+                    "out_channels": 10,
+                    "path_to_classes_json": "data/semantic_maps/train/groundtruths/classes.json",
+                    "weight": 1e-4
                 }
             }
         ],
@@ -149,7 +152,7 @@
             // { "name": "LinearLR", "args": { "start_factor": 0.2, "total_iters": 1e3 }}
         ],
         "which_losses": [ // import designated list of losses without arguments
-            "mse_loss" // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
+            "focused_mse_loss" // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
         ],
         "which_metrics": [ // import designated list of metrics without arguments
             "mae" // import mae() function/class from default file (default is [models/metrics.py]), equivalent to { "name": "mae", "args":{}}
