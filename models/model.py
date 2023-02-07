@@ -3,7 +3,7 @@ import tqdm
 from ..core.base_model import BaseModel
 from ..core.logger import LogTracker
 from .network import ChannelAdaptor
-from ....utils import fold_channel
+from ....utils import fold_channel, display_channels
 import copy
 class EMA():
     def __init__(self, beta=0.9999):
@@ -117,22 +117,26 @@ class Palette(BaseModel):
         for train_data in tqdm.tqdm(self.phase_loader):
             self.optG.zero_grad()
             self.set_input(train_data)
-            loss = self.netG(self.gt_image, self.cond_image, mask=self.mask) + self.adaptor_loss
-            loss.backward()
+            loss = self.netG(self.gt_image, self.cond_image, mask=self.mask) 
+            loss_informative = self.adaptor_loss
+            loss_sum = loss + self.adaptor.weight * loss_informative
+            loss_sum.backward()
             self.optG.step()
 
             self.iter += self.batch_size
             self.writer.set_iter(self.epoch, self.iter, phase='train')
             self.train_metrics.update(self.loss_fn.__name__, loss.item())
-            if self.iter % self.opt['train']['log_iter'] == 0:
+            self.train_metrics.update('informative_loss', loss_informative.item())
+            if self.iter // self.opt['train']['log_iter'] > (self.iter - self.batch_size) // self.opt['train']['log_iter']:
                 for key, value in self.train_metrics.result().items():
                     self.logger.info('{:5s}: {}\t'.format(str(key), value))
                     self.writer.add_scalar(key, value)
+            if self.iter // self.opt['train']['img_log_iter'] > (self.iter - self.batch_size) // self.opt['train']['img_log_iter']:
                 for key, value in self.get_current_visuals().items():
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [fold_channel(v, 3, reduction='mean', red_goal=True) for v in value]
+                            value = [display_channels(v) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
             if self.ema_scheduler is not None:
@@ -176,7 +180,7 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [fold_channel(v, 3, reduction='mean', red_goal=True) for v in value]
+                            value = [display_channels(v) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 # self.writer.save_images(self.save_current_results())
@@ -237,7 +241,7 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [fold_channel(v, 3, reduction='mean', red_goal=True) for v in value]
+                            value = [display_channels(v) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 self.writer.save_images(self.save_current_results())
