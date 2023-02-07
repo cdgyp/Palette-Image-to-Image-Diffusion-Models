@@ -8,6 +8,7 @@ import importlib
 from types  import FunctionType
 import shutil
 from ..data.dataset import UncroppingDataset
+from ....utils import set_log_dir, open_tensorboard
 
 def init_obj(opt, logger, *args, default_file_name='default file', given_module=None, init_type='Network', **modify_kwargs):
     """
@@ -130,6 +131,7 @@ def parse(args):
     ''' set log directory '''
     experiments_root = os.path.join(opt['path']['base_dir'], '{}_{}'.format(opt['name'], get_timestamp()))
     mkdirs(experiments_root)
+    open_tensorboard(os.path.join(experiments_root, "tb_logger"))
 
     ''' save json '''
     write_json(opt, '{}/config.json'.format(experiments_root))
