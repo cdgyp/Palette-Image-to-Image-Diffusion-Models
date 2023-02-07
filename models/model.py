@@ -5,7 +5,7 @@ from ..core.logger import LogTracker
 from .network import ChannelAdaptor
 from ....utils import fold_channel, display_channels
 import copy
-from .loss import set_presence_map
+from .loss import set_presence_map, nonempty_points, set_mask
 class EMA():
     def __init__(self, beta=0.9999):
         super().__init__()
@@ -67,7 +67,9 @@ class Palette(BaseModel):
 
         ''' must use set_device in tensor '''
 
-        set_presence_map(data.get('gt_image')) # 部分 loss 需要未压缩的图片
+        self.uncompressed_gt_image = self.set_device(data.get('gt_image'))
+        set_presence_map(self.uncompressed_gt_image) # 部分 loss 需要未压缩的图片
+        set_mask(self.set_device(data.get('mask')))
 
         self.adaptor.clear_loss()
         self.gt_image = self.adaptor(self.set_device(data.get('gt_image'),), data.get('channel'), self.set_device(data.get('class_manager')))
@@ -139,7 +141,11 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [display_channels(v) for v in value]
+                            first_image = [None] * len(value)
+                            if key == 'gt_image':
+                                first_image = nonempty_points(self.uncompressed_gt_image)
+                                first_image = first_image.expand(-1, 3, -1, -1).float()
+                            value = [display_channels(v, f) for v, f in zip(value, first_image)]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
             if self.ema_scheduler is not None:
@@ -183,7 +189,13 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [display_channels(v) for v in value]
+                            first_image = [None] * len(value)
+                            if key == 'gt_image' or key == 'output':
+                                first_image = nonempty_points(self.uncompressed_gt_image)
+                                if 'output' in key:
+                                    first_image = first_image * self.mask
+                                first_image = first_image.expand(-1, 3, -1, -1).float()
+                            value = [display_channels(v, f) for v, f in zip(value, first_image)]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 # self.writer.save_images(self.save_current_results())
