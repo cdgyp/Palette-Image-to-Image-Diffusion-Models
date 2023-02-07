@@ -5,6 +5,7 @@ from ..core.logger import LogTracker
 from .network import ChannelAdaptor
 from ....utils import fold_channel, display_channels
 import copy
+from .loss import set_presence_map
 class EMA():
     def __init__(self, beta=0.9999):
         super().__init__()
@@ -65,6 +66,8 @@ class Palette(BaseModel):
         self.batch_size = len(data['path'])
 
         ''' must use set_device in tensor '''
+
+        set_presence_map(data.get('gt_image')) # 部分 loss 需要未压缩的图片
 
         self.adaptor.clear_loss()
         self.gt_image = self.adaptor(self.set_device(data.get('gt_image'),), data.get('channel'), self.set_device(data.get('class_manager')))
