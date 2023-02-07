@@ -214,13 +214,22 @@ class ChannelAdaptor(BaseNetwork):
     def get_loss(self):
         return self.loss
     def _loss(self, x: torch.Tensor):
-        self.loss = self.weight * x.std(dim=(-1, -2)).mean(dim=-1)
+        assert torch.isnan(x).sum() == 0, x
+        # self.loss = -self.weight * (x.std(dim=(-1, -2)) / (x.mean(dim=(-1, -2)) + 1e-9)).mean(dim=-1)
+        # self.loss = -self.weight * x.clamp(0, 1).std(dim=(-1, -2), unbiased=False).mean(dim=-1)
+
+        unbiased_squared_deviation = ((x - x.mean(dim=[-1, -2], keepdim=True)) ** 2).sum(dim=[-1, -2]) / (x.shape[-1] * x.shape[-2] - 1)
+        self.loss = - (unbiased_squared_deviation / (x.mean(dim=[-1, -2]) + 1e-9)**2).clamp(min=0, max=1).mean(-1)
+        assert torch.isnan(self.loss).sum() == 0, x.mean(dim=(-1, -2)) + 1e-9
+        
 
     def conv(self, x: torch.Tensor, cm: ClassManager):
         if cm is None:
             return torch.nn.functional.conv2d(x.unsqueeze(dim=0), self.kernel).squeeze(dim=0)
         x = x.to(self.kernel.device)
-        local_kernel = cm.reduce_channel(self.kernel.exp(), dim=1)
+        assert torch.isnan(self.kernel).sum() == 0
+        local_kernel = cm.reduce_channel(self.kernel.clamp(-10, 10).sigmoid(), dim=1)
+        assert torch.isnan(local_kernel).sum() == 0
         assert local_kernel.requires_grad == True or x.requires_grad == False
         assert local_kernel.shape[1] == x.shape[0], (x.shape, local_kernel.shape)
         res = torch.nn.functional.conv2d(x.unsqueeze(dim=0), local_kernel).squeeze(dim=0)
