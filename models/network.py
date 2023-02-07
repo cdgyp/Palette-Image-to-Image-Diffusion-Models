@@ -213,13 +213,26 @@ class ChannelAdaptor(BaseNetwork):
         self.loss = 0
     def get_loss(self):
         return self.loss
+    def _intra_channel_loss(self, x:torch.Tensor):
+        unbiased_squared_deviation = ((x - x.mean(dim=[-1, -2], keepdim=True)) ** 2).sum(dim=[-1, -2]) / (x.shape[-1] * x.shape[-2] - 1)
+        return -(unbiased_squared_deviation / (x.mean(dim=[-1, -2]) + 1e-9)**2).clamp(min=0, max=1).mean(-1)
+    def _inter_channel_loss(self, x:torch.Tensor):
+        n_channel = x.shape[-3]
+        n_group = n_channel // 2
+        channel_ids = torch.randint(0, n_channel, [n_group * 2]).to(x.device)
+
+        old_shape = list(x.shape)
+        new_shape = old_shape[:-3] +  [n_group, 2] + old_shape[-2:]
+        aligned = x.index_select(-3, channel_ids).reshape(new_shape)
+        normalized = aligned / (aligned.mean(dim=(-1, -2), keepdim=True) + 1e-9)
+        squared_difference = (normalized.select(-3, 0) - normalized.select(-3, 1)) ** 2
+
+        return -squared_difference.clamp(min=0, max=1).mean(dim=(-1, -2, -3))
+
     def _loss(self, x: torch.Tensor):
         assert torch.isnan(x).sum() == 0, x
-        # self.loss = -self.weight * (x.std(dim=(-1, -2)) / (x.mean(dim=(-1, -2)) + 1e-9)).mean(dim=-1)
-        # self.loss = -self.weight * x.clamp(0, 1).std(dim=(-1, -2), unbiased=False).mean(dim=-1)
 
-        unbiased_squared_deviation = ((x - x.mean(dim=[-1, -2], keepdim=True)) ** 2).sum(dim=[-1, -2]) / (x.shape[-1] * x.shape[-2] - 1)
-        self.loss = - (unbiased_squared_deviation / (x.mean(dim=[-1, -2]) + 1e-9)**2).clamp(min=0, max=1).mean(-1)
+        self.loss = self._intra_channel_loss(x) + self._inter_channel_loss(x)
         assert torch.isnan(self.loss).sum() == 0, x.mean(dim=(-1, -2)) + 1e-9
         
 
