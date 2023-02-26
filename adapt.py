@@ -106,5 +106,5 @@ def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_trai
 
     opt['world_size'] = 1
     
-    return _main_worker(gpu_ids[0], 1, opt)
+    return _main_worker(0, 1, opt)
 
