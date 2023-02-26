@@ -42,6 +42,7 @@ def _main_worker(gpu, ngpus_per_node, opt):
         writer = phase_writer
     )
 
+
     model: Palette
     total_dataset: MaskShiftingUncroppingDataset
     return model, total_dataset
@@ -74,6 +75,7 @@ def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_trai
     - .is_ground_truth(ground_truth_id)：检测一个真相是否已经存在，返回 `True` 表示该真相已经存在
     """
     assert class_number > 0
+    torch.multiprocessing.set_start_method('spawn')
 
     args_dict = {
         'config': base_config,
@@ -104,5 +106,5 @@ def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_trai
 
     opt['world_size'] = 1
     
-    return _main_worker(0, 1, opt)
+    return _main_worker(gpu_ids[0], 1, opt)
 

@@ -27,6 +27,7 @@
                         "scale": 0.2,
                         "max_small_step": 3
                     },
+                    "image_size": [128, 128], 
                     "down_scale": 2,
                     "ground_truth_len": -1,
                     "mask_queue_len": -1
@@ -36,14 +37,14 @@
                 "validation_split": 2, // percent or number 
                 "args":{ // arguments to initialize train_dataloader
                     "batch_size": 3, // batch size in each gpu
-                    "num_workers": 4,
+                    "num_workers": 2,
                     "shuffle": true,
                     "pin_memory": true,
                     "drop_last": true
                 },
                 "val_args":{ // arguments to initialize valid_dataloader, will overwrite the parameters in train_dataloader
                     "batch_size": 1, // batch size in each gpu
-                    "num_workers": 4,
+                    "num_workers": 2,
                     "shuffle": false,
                     "pin_memory": true,
                     "drop_last": false
@@ -58,10 +59,11 @@
                     "mask_config": {
                         "mask_mode": "onedirection",
                         "shape": [],
-                        "sensor_range": 5.0,
-                        "scale": 0.2,
+                        "sensor_range": 3.0,
+                        "scale": 0.4,
                         "max_small_step": 3
                     },
+                    "image_size": [128, 128],
                     "down_scale": 2
                 }
             },
@@ -104,8 +106,8 @@
                         "channel_mults": [
                             1,
                             2,
-                            8,
-                            4
+                            4,
+                            8
                         ],
                         "attn_res": [
                             // 32,
@@ -115,7 +117,7 @@
                         "num_head_channels": 32,
                         "res_blocks": 2,
                         "dropout": 0.2,
-                        "image_size": 256
+                        "image_size": 128
                     },
                     "beta_schedule": {
                         "train": {
@@ -145,14 +147,15 @@
             }
         ],
         "which_optimizers": [ // len(networks) == len(optimizers) == len(lr_schedulers), it will be deleted after initialization if not used.
-            { "name": "Adam", "args":{ "lr": 5e-5, "weight_decay": 0}}
+            { "name": "Adam", "args":{ "lr": 3e-5, "weight_decay": 0}}
         ],
         "which_lr_schedulers": [ // {} represents None, it will be deleted after initialization.
             {}
-            // { "name": "LinearLR", "args": { "start_factor": 0.2, "total_iters": 1e3 }}
+            //{ "name": "LinearLR", "args": { "start_factor": 0.2, "total_iters": 1e3 }}
         ],
         "which_losses": [ // import designated list of losses without arguments
-            "focused_mse_loss" // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
+            "focused_mse_loss", // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
+            "informative_loss"
         ],
         "which_metrics": [ // import designated list of metrics without arguments
             "mae" // import mae() function/class from default file (default is [models/metrics.py]), equivalent to { "name": "mae", "args":{}}
@@ -164,14 +167,16 @@
         "n_iter": 1e8, // max interations
         "val_epoch": 10, // valdation every specified number of epochs
         "save_checkpoint_epoch": 200,
-        "log_iter": 1e4, // log every specified number of iterations
+        "log_iter": 10, // log every specified number of iterations
+        "img_log_iter": 400, // log images every specified number of iterations
         "tensorboard" : true // tensorboardX enable
     },
     
     "debug": { // arguments in debug mode, which will replace arguments in train
         "val_epoch": 1,
         "save_checkpoint_epoch": 1,
-        "log_iter": 10,
+        "log_iter": 1,
+        "img_log_iter": 1,
         "debug_split": 50 // percent or number, change the size of dataloder to debug_split.
     }
 }

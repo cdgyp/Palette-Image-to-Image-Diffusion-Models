@@ -171,6 +171,7 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
             import torch.nn.functional as F
             import random
 
+            old_shape = list(img.shape)
             padding = [0] * 4
             for i in [-1, -2]:
                 if img.shape[i] < self.size[i]:
@@ -186,6 +187,8 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
             h, w = self.size
             i = random.randint(0, img.shape[-2] - h)
             j = random.randint(0, img.shape[-1] - w)
+
+            # print(old_shape, "->", img.shape, "->", self.size)
 
             if len(img.shape) == 2:
                 return img[i: i + h, j: j + h]
@@ -248,6 +251,7 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
             new_shape = shape[:-2] + [shape[-2] // self.down_scale, self.down_scale, shape[-1] // self.down_scale, self.down_scale]
             res = img.reshape(new_shape).mean(dim=(-1, -3))
             assert len(res.shape) == len(shape)
+            # print(img.shape, "->", res.shape)
             return res
         
     def _identitiy(x): return x
