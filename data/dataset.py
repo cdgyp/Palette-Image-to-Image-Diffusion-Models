@@ -450,6 +450,58 @@ class MaskShiftingUncroppingDataset(UncroppingDataset):
         return data
 
 
+class SimpleUncroppingDataset(data.Dataset):
+    def __init__(self, data_root, image_size) -> None:
+        super().__init__()
+        self.root = data_root
+        self.masksem_dir = os.path.join(self.root, 'masksem')
+        self.topdown_dir = os.path.join(self.root, 'groundtruths')
+        self.sample_paths: list[tuple[str, str]] = []
+        self.scenes = [dir for dir in os.listdir(self.masksem_dir) if os.path.isdir(os.path.join(self.masksem_dir, dir))]
+        for scene in self.scenes:
+            scene_masksem_dir = os.path.join(self.masksem_dir, scene)
+            masksems = [file for file in os.listdir(scene_masksem_dir) 
+                            if os.path.isfile(os.path.join(scene_masksem_dir, file)) 
+                                and os.path.splitext(file)[1] == '.masksem'
+            ]
+            topdown_path = os.path.join(self.topdown_dir, scene + '-sparse.topdown')
+            for ms in masksems:
+                self.sample_paths.append((os.path.join(scene_masksem_dir, ms), topdown_path))
+        # print('scenes:', self.scenes)
+        # print('num of episodes:', len(self.sample_paths))
+        self.pool = torch.nn.modules.AdaptiveAvgPool2d(image_size)
+
+    def __len__(self):
+        return len(self.sample_paths)
+    def __getitem__(self, index):
+        while True:
+            try:
+                ret = {}
+                masksems_path, topdown_path = self.sample_paths[index]
+
+                topdown =  self.pool(torch.load(topdown_path).to_dense()).to('cpu')
+                masksem = self.pool(torch.load(masksems_path).to_dense()).to('cpu')
+
+                mask, img = 1 - masksem[[0]].clamp(min=0, max=1).round(), masksem[1:]
+                cond_image = img * (1. - mask) + mask * torch.randn_like(img).to(mask.device)
+                mask_img = img*(1. - mask) + mask
+
+
+                ret['gt_image'] = topdown
+                ret['cond_image'] = cond_image
+                ret['mask_image'] = mask_img
+                ret['mask'] = mask
+                ret['path'] = masksems_path
+                ret['channel'] = img.shape[-3]
+
+                return ret
+            except: 
+                index = (index + 1) % len(self)
+    def get_collate_fn(self):
+        return None
+    def get_ground_truth_identifiers(self):
+        return self.scenes
+
 class ColorizationDataset(data.Dataset):
     def __init__(self, data_root, data_flist, data_len=-1, image_size=[224, 224], loader=pil_loader):
         self.data_root = data_root

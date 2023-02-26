@@ -3,7 +3,7 @@ import tqdm
 from ..core.base_model import BaseModel
 from ..core.logger import LogTracker
 from .network import ChannelAdaptor
-from ....utils import fold_channel, display_channels
+from ....utils import fold_channel, display_channels, gibson_visualize
 import copy
 from .loss import set_presence_map, nonempty_points, set_mask
 class EMA():
@@ -82,17 +82,25 @@ class Palette(BaseModel):
     
     def get_current_visuals(self, phase='train'):
         dict = {
-            'gt_image': (self.gt_image.detach()[:].float().cpu()+1)/2,
-            'cond_image': (self.cond_image.detach()[:].float().cpu()+1)/2,
+            # 'gt_image': (self.gt_image.detach()[:].float().cpu()+1)/2,
+            # 'cond_image': (self.cond_image.detach()[:].float().cpu()+1)/2,
+            'gt_image': self.gt_image.detach()[:].float().cpu(),
+            'cond_image': self.cond_image.detach()[:].float().cpu(),
         }
         if self.task in ['inpainting','uncropping']:
+            print(self.mask_image.shape, self.mask.shape)
+            channel_mask = self.set_device(torch.ones([1, self.mask_image.shape[1], 1, 1]))
+            d = self.mask.expand(-1, channel_mask.shape[1], -1, -1) * channel_mask
+            channel_mask[:, -2] = 0
             dict.update({
                 'mask': self.mask.detach()[:].float().cpu(),
-                'mask_image': (self.mask_image+1)/2,
+                # 'mask_image': (self.mask_image+1)/2,
+                'mask_image': self.mask_image - d
             })
         if phase != 'train':
             dict.update({
-                'output': (self.output.detach()[:].float().cpu()+1)/2
+                # 'output': (self.output.detach()[:].float().cpu()+1)/2
+                'output': self.output.detach()[:].float().cpu()
             })
         return dict
 
@@ -145,8 +153,9 @@ class Palette(BaseModel):
                             if key == 'gt_image':
                                 first_image = nonempty_points(self.uncompressed_gt_image)
                                 first_image = first_image.expand(-1, 3, -1, -1).float()
-                            value = [display_channels(v, f) for v, f in zip(value, first_image)]
+                            value = [gibson_visualize(v, f) for v, f in zip(value, first_image)]
                             value = torch.stack(value, dim=0)
+                    assert (~((0<=value) & (value<256))).sum() == 0, (value.min(), value.max())
                     self.writer.add_images(key, value)
             if self.ema_scheduler is not None:
                 if self.iter > self.ema_scheduler['ema_start'] and self.iter % self.ema_scheduler['ema_iter'] == 0:
@@ -195,7 +204,7 @@ class Palette(BaseModel):
                                 if 'output' in key:
                                     first_image = first_image * self.mask
                                 first_image = first_image.expand(-1, 3, -1, -1).float()
-                            value = [display_channels(v, f) for v, f in zip(value, first_image)]
+                            value = [gibson_visualize(v, f) for v, f in zip(value, first_image)]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 # self.writer.save_images(self.save_current_results())
@@ -256,7 +265,7 @@ class Palette(BaseModel):
                     assert isinstance(value, torch.Tensor)
                     if value.shape[1] > 3:
                         with torch.no_grad():
-                            value = [display_channels(v) for v in value]
+                            value = [gibson_visualize(v) for v in value]
                             value = torch.stack(value, dim=0)
                     self.writer.add_images(key, value)
                 self.writer.save_images(self.save_current_results())

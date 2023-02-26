@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 from ..core.base_network import BaseNetwork
 
 from ....utils import ClassManager
+from .loss import set_t_range, set_t
 
 class Network(BaseNetwork):
     def __init__(self, unet, beta_schedule, module_name='sr3', **kwargs):
@@ -110,6 +111,10 @@ class Network(BaseNetwork):
         # sampling from p(gammas)
         b, *_ = y_0.shape
         t = torch.randint(1, self.num_timesteps, (b,), device=y_0.device).long()
+
+        set_t_range((1, self.num_timesteps))
+        set_t(t)
+
         gamma_t1 = extract(self.gammas, t-1, x_shape=(1, 1))
         sqrt_gamma_t2 = extract(self.gammas, t, x_shape=(1, 1))
         sample_gammas = (sqrt_gamma_t2-gamma_t1) * torch.rand((b, 1), device=y_0.device) + gamma_t1
@@ -121,10 +126,10 @@ class Network(BaseNetwork):
 
         if mask is not None:
             noise_hat = self.denoise_fn(torch.cat([y_cond, y_noisy*mask+(1.-mask)*y_0], dim=1), sample_gammas)
-            loss = self.loss_fn(mask*noise, mask*noise_hat)
+            loss = self.loss_fn(mask*noise, mask*noise_hat).mean()
         else:
             noise_hat = self.denoise_fn(torch.cat([y_cond, y_noisy], dim=1), sample_gammas)
-            loss = self.loss_fn(noise, noise_hat)
+            loss = self.loss_fn(noise, noise_hat).mean()
         return loss
 
 
@@ -274,4 +279,16 @@ class ChannelAdaptor(BaseNetwork):
             res = torch.stack(res, dim=0)
         return res
 
-
+class SimpleAdaptor(BaseNetwork):
+    def __init__(self):
+        super().__init__()
+        self.dummpy = torch.nn.Parameter(torch.zeros([1]))
+        self.weight = 0
+    def forward(self, xs: torch.Tensor, channels:list=None, cms: list=None):
+        return xs
+    def clear_loss(self):
+        pass
+    def get_loss(self):
+        return torch.tensor([0.], device=self.dummpy.device)
+    
+    
