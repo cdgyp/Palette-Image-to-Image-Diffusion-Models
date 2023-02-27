@@ -66,6 +66,9 @@ def focused_mse_loss(output: torch.Tensor, target: torch.Tensor, mask: torch.Ten
     channelwise_loss = (((output - target)**2) * nonempty_predicted).sum(dim=(-1, -2)) / (nonempty_predicted.sum(dim=(-1, -2)) + 1e-9)
     return (channel_weight * channelwise_loss).sum(dim=-1)
 
+def mse_loss(output: torch.Tensor, target: torch.Tensor):
+    return ((output - target)**2).mean()
+
 def _dice_coefficient(output: torch.Tensor, target: torch.Tensor):
     channel_wise = (output * target).sum(dim=[-1, -2]) / (output ** 2 + target ** 2 + 1e-9).sum(dim=[-1, -2])
     return 2 * channel_wise.mean(dim=-1)
@@ -101,11 +104,11 @@ def relay_loss(output: torch.Tensor, target: torch.Tensor):
     r = _linear_mix_ratio(t)
     mask = _get_mask()
     noisy, gamma = _get_noisy_gamma()
-    return r * focused_dice_loss(
+    return (1-r) * focused_dice_loss(
                 reverse(noisy, output, gamma), 
                 reverse(noisy, target, gamma),
                 mask=mask
-            ) + (1-r) * focused_mse_loss(output, target, mask)
+            ) + r * focused_mse_loss(output, target, mask)
 
 
 def mse_loss(output: torch.Tensor, target: torch.Tensor):
