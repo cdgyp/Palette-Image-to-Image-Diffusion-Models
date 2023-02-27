@@ -70,21 +70,42 @@ def _dice_coefficient(output: torch.Tensor, target: torch.Tensor):
     channel_wise = (output * target).sum(dim=[-1, -2]) / (output ** 2 + target ** 2 + 1e-9).sum(dim=[-1, -2])
     return 2 * channel_wise.mean(dim=-1)
 
-def _dice_loss(output: torch.Tensor, target: torch.Tensor):
+def dice_loss(output: torch.Tensor, target: torch.Tensor):
     return 1 - _dice_coefficient(output, target)
 
 def focused_dice_loss(output: torch.Tensor, target: torch.Tensor, mask: torch.Tensor = None):
     if mask is None: mask = _get_mask()
-    return _dice_loss(output * mask, target * mask)
+    return dice_loss(output * mask, target * mask)
 
 def _linear_mix_ratio(t):
     return (t - _t_range[0]) / (_t_range[1] - _t_range[0] - 1)
 
+_noisy: torch.Tensor = None
+_gamma: torch.tensor = None
+def set_noisy_gamma(noisy: torch.Tensor, gamma: torch.Tensor):
+    global _noisy, _gamma 
+    _noisy, _gamma = noisy, gamma
+
+
+def _get_noisy_gamma():
+    global _noisy, _gamma
+    res = _noisy, _gamma
+    _noisy, _gamma = None, None
+    return res
+
 def relay_loss(output: torch.Tensor, target: torch.Tensor):
+    def reverse(noisy: torch.Tensor, noise: torch.Tensor, gamma: torch.Tensor):
+        gamma = gamma.unsqueeze(dim=-1).unsqueeze(dim=-1)
+        return (noisy - (1 - gamma).sqrt() * noise) / gamma.sqrt()
     t = _get_t()
     r = _linear_mix_ratio(t)
     mask = _get_mask()
-    return r * focused_dice_loss(output, target, mask) + (1-r) * focused_mse_loss(output, target, mask)
+    noisy, gamma = _get_noisy_gamma()
+    return r * focused_dice_loss(
+                reverse(noisy, output, gamma), 
+                reverse(noisy, target, gamma),
+                mask=mask
+            ) + (1-r) * focused_mse_loss(output, target, mask)
 
 
 def mse_loss(output: torch.Tensor, target: torch.Tensor):

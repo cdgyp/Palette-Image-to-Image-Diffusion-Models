@@ -20,11 +20,11 @@
                 "name": ["..data.dataset", "SimpleUncroppingDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
                 "args":{ // arguments to initialize dataset
                     "data_root": "data/semantic_maps/train",
-                    "image_size": [240, 240]
+                    "image_size": [120, 120]
                 } 
             },
             "dataloader":{
-                "validation_split": 10, // percent or number 
+                "validation_split": 20, // percent or number 
                 "args":{ // arguments to initialize train_dataloader
                     "batch_size": 4, // batch size in each gpu
                     "num_workers": 4,
@@ -46,7 +46,7 @@
                 "name": "SimpleUncroppingDataset", // import Dataset() class / function(not recommend) from default file
                 "args":{
                     "data_root": "..../data/semantic_maps/train",
-                    "image_size": [240, 240]
+                    "image_size": [120, 120]
                 }
             },
             "dataloader":{
@@ -138,14 +138,15 @@
         ],
         "which_metrics": [ // import designated list of metrics without arguments
             "mae" // import mae() function/class from default file (default is [models/metrics.py]), equivalent to { "name": "mae", "args":{}}
+            //"dice_loss"
         ]
     },
 
     "train": { // arguments for basic training
         "n_epoch": 1e8, // max epochs, not limited now
         "n_iter": 1e8, // max interations
-        "val_epoch": 10, // valdation every specified number of epochs
-        "save_checkpoint_epoch": 500,
+        "val_epoch": 1, // valdation every specified number of epochs
+        "save_checkpoint_epoch": 5,
         "log_iter": 10, // log every specified number of iterations
         "img_log_iter": 400, // log images every specified number of iterations
         "tensorboard" : true // tensorboardX enable

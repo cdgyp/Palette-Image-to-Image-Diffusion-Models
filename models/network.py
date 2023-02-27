@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 from ..core.base_network import BaseNetwork
 
 from ....utils import ClassManager
-from .loss import set_t_range, set_t
+from .loss import set_t_range, set_t, set_noisy_gamma
 
 class Network(BaseNetwork):
     def __init__(self, unet, beta_schedule, module_name='sr3', **kwargs):
@@ -124,6 +124,7 @@ class Network(BaseNetwork):
         y_noisy = self.q_sample(
             y_0=y_0, sample_gammas=sample_gammas.view(-1, 1, 1, 1), noise=noise)
 
+        set_noisy_gamma(y_noisy, sample_gammas)
         if mask is not None:
             noise_hat = self.denoise_fn(torch.cat([y_cond, y_noisy*mask+(1.-mask)*y_0], dim=1), sample_gammas)
             loss = self.loss_fn(mask*noise, mask*noise_hat).mean()
