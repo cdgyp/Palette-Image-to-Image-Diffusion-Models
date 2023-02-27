@@ -210,8 +210,8 @@ class Palette(BaseModel):
                 # self.writer.save_images(self.save_current_results())
 
         return self.val_metrics.result()
-    def __call__(self, y_with_mask):
-        """forward
+    def forward(self, y_with_mask):
+        """
 
         :param torch.Tensor y_with_mask: BatchSize x (ClassNumber + 1) x H x W. 通道中多出的一维对应 mask, mask[y, x]=1 表示当前位置是预测的
         :raises NotImplemented: 没有实现的场景
