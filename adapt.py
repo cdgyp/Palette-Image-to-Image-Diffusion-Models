@@ -75,7 +75,6 @@ def prepare(class_number: int, base_config: str, batch_size: int, epoch_per_trai
     - .is_ground_truth(ground_truth_id)：检测一个真相是否已经存在，返回 `True` 表示该真相已经存在
     """
     assert class_number > 0
-    torch.multiprocessing.set_start_method('spawn')
 
     args_dict = {
         'config': base_config,
