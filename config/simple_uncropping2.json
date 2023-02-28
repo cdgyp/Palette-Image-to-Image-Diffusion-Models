@@ -132,7 +132,8 @@
             //{ "name": "LinearLR", "args": { "start_factor": 0.2, "total_iters": 1e3 }}
         ],
         "which_losses": [ // import designated list of losses without arguments
-            "relay_loss",
+            //"relay_loss",
+            "mse_loss",
             //"focused_mse_loss", // import mse_loss() function/class from default file (default is [models/losses.py]), equivalent to { "name": "mse_loss", "args":{}}
             "informative_loss"
         ],
